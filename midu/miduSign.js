@@ -18,7 +18,7 @@ const DeleteCookieAll = false // 清除所有
 const DeleteCookieOne = false // 清除账户一
 const DeleteCookieTwo = false // 清除账户二
 
-const bind = true // 绑定作者邀请码,默认true,可更改为false
+const bind = false // 绑定作者邀请码,默认true,可更改为false
 
 const cookieName = '米读'
 const senku = init()
