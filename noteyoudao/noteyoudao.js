@@ -1,99 +1,80 @@
-const $ = new Env('顺丰速运')
-$.VAL_loginurl = $.getdata('chavy_loginurl_sfexpress')
-$.VAL_loginheader = $.getdata('chavy_loginheader_sfexpress')
+const $ = new Env('有道云笔记')
+$.VAL_login = $.getdata('chavy_login_noteyoudao')
+$.VAL_sign_url = $.getdata('chavy_signurl_noteyoudao')
+$.VAL_sign_body = $.getdata('chavy_signbody_noteyoudao')
+$.VAL_sign_headers = $.getdata('chavy_signheaders_noteyoudao')
 
 !(async () => {
-  await refresh()
   await loginapp()
-  await signapp()
-  await getinfo()
+  await signinapp()
+  await logindaily()
   await showmsg()
 })()
   .catch((e) => $.logErr(e))
   .finally(() => $.done())
 
-function refresh() {
-  if (!$.isQuanX()) return
-  return new Promise((resolve) => {
-    const url = { url: `https://sf-integral-sign-in.weixinjia.net/app/signin`, headers: { Cookie: '' } }
-    url.body = `date=${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`
-    $.post(url, () => resolve())
-  })
-}
-
 function loginapp() {
-  return new Promise((resolve) => {
-    const url = { url: $.VAL_loginurl }
-    $.get(url, () => resolve())
-  })
-}
-
-function signapp() {
-  return new Promise((resolve) => {
-    const url = { url: `https://sf-integral-sign-in.weixinjia.net/app/signin`, headers: JSON.parse($.VAL_loginheader) }
-    delete url.headers['Cookie']
-    url.headers['Origin'] = 'https://sf-integral-sign-in.weixinjia.net'
-    url.headers['Connection'] = 'keep-alive'
-    url.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    url.headers['Accept'] = 'application/json, text/plain, */*'
-    url.headers['Host'] = 'sf-integral-sign-in.weixinjia.net'
-    url.headers['Accept-Language'] = 'zh-cn'
-    url.headers['Accept-Encoding'] = 'gzip, deflate, br'
-    url.body = `date=${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`
-    $.post(url, (err, resp, data) => {
+  return new Promise((resove) => {
+    const { url, body, headers } = JSON.parse($.VAL_login)
+    $.post({ url, body, headers: JSON.parse(headers) }, (error, response, data) => {
       try {
-        $.signapp = JSON.parse(data)
+        if (error) throw new Error(error)
+        $.log(`❕ ${$.name}, 登录: ${JSON.stringify(response)}`)
       } catch (e) {
-        $.logErr(e, resp)
+        $.log(`❗️ ${$.name}, 每日登录: 失败!`, ` error = ${error || e}`, `response = ${JSON.stringify(response)}`, `data = ${data}`, '')
       } finally {
-        resolve()
+        resove()
       }
     })
   })
 }
 
-function getinfo() {
-  return new Promise((resolve) => {
-    const url = { url: `https://sf-integral-sign-in.weixinjia.net/app/init`, headers: JSON.parse($.VAL_loginheader) }
-    delete url.headers['Cookie']
-    url.headers['Origin'] = 'https://sf-integral-sign-in.weixinjia.net'
-    url.headers['Connection'] = 'keep-alive'
-    url.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    url.headers['Accept'] = 'application/json, text/plain, */*'
-    url.headers['Host'] = 'sf-integral-sign-in.weixinjia.net'
-    url.headers['Accept-Encoding'] = 'gzip, deflate, br'
-    url.headers['Accept-Language'] = 'zh-cn'
-    $.post(url, (err, resp, data) => {
+function logindaily() {
+  return new Promise((resove) => {
+    const url = { url: 'https://note.youdao.com/yws/api/daupromotion?method=sync', headers: JSON.parse($.VAL_sign_headers) }
+    delete url.headers.Cookie
+    $.post(url, (error, response, data) => {
       try {
-        $.info = JSON.parse(data)
+        if (error) throw new Error(error)
+        $.log(`❕ ${$.name}, 每日登录: ${data}`)
+        $.daily = JSON.parse(data)
       } catch (e) {
-        $.logErr(e, resp)
+        $.log(`❗️ ${$.name}, 每日登录: 失败!`, ` error = ${error || e}`, `response = ${JSON.stringify(response)}`, `data = ${data}`, '')
       } finally {
-        resolve()
+        resove()
+      }
+    })
+  })
+}
+
+function signinapp() {
+  return new Promise((resove) => {
+    const url = { url: $.VAL_sign_url, body: $.VAL_sign_body, headers: JSON.parse($.VAL_sign_headers) }
+    delete url.headers.Cookie
+    $.post(url, (error, response, data) => {
+      try {
+        if (error) throw new Error(error)
+        $.log(`❕ ${$.name}, 每日签到: ${data}`)
+        $.signin = JSON.parse(data)
+      } catch (e) {
+        $.log(`❗️ ${$.name}, 每日登录: 失败!`, ` error = ${error || e}`, `response = ${JSON.stringify(response)}`, `data = ${data}`, '')
+      } finally {
+        resove()
       }
     })
   })
 }
 
 function showmsg() {
-  return new Promise((resolve) => {
-    if ($.signapp.code == 0 && $.signapp.msg == 'success') {
-      $.subt = `签到: 成功`
-    } else if ($.signapp.code == -1) {
-      if ($.signapp.msg == 'ALREADY_CHECK') {
-        $.subt = `签到: 重复`
-      } else {
-        $.subt = `签到: 失败`
-      }
-    } else {
-      $.subt = `签到: 未知`
-      $.desc = `说明: ${$.signapp.msg}`
-    }
-    if ($.info && $.info.code == 0) {
-      $.desc = `积分: ${$.info.data.member_info.integral}, 本周连签: ${$.info.data.check_count}天`
-    }
-    $.msg($.name, $.subt, $.desc)
-    resolve()
+  return new Promise((resove) => {
+    const dailyFlag = $.daily.accept === true ? '成功' : '重复'
+    const signinFlag = $.signin.success === 1 ? '成功' : $.signin.success === 0 ? '重复' : '错误'
+    $.subt = `每日登录: ${dailyFlag}, 每日签到: ${signinFlag}`
+    const continuousDays = `连签: ${$.daily.rewardSpace / 1024 / 1024}天`
+    const rewardSpace = `本次获得: ${$.daily.rewardSpace / 1024 / 1024}MB`
+    const totalReward = `总共获得: ${$.daily.totalRewardSpace / 1024 / 1024}MB`
+    $.desc = `${continuousDays}, ${rewardSpace}, ${totalReward}`
+    resove()
   })
 }
 

@@ -1,118 +1,73 @@
-const $ = new Env('什么值得买')
-$.VAL_cookies = $.getdata('chavy_cookie_smzdm')
-$.VAl_accounts = $.getdata('chavy_accounts_smzdm')
+const $ = new Env('会话切换')
+$.KEY_sessions = 'chavy_boxjs_sessions'
+$.KEY_curSessions = 'chavy_boxjs_cur_sessions'
+$.CFG_isSilent = $.getdata('CFG_BoxSwitcher_isSilent')
 
 !(async () => {
-  await signweb()
-  await signapp()
+  await execSwitch()
   await showmsg()
 })()
   .catch((e) => $.logErr(e))
   .finally(() => $.done())
 
-function signweb() {
+function execSwitch() {
+  $.subt = ''
+  $.desc = []
   return new Promise((resove) => {
-    const url = { url: 'https://zhiyou.smzdm.com/user/checkin/jsonp_checkin', headers: {} }
-    url.headers['Cookie'] = $.VAL_cookies
-    url.headers['Referer'] = 'http://www.smzdm.com/'
-    url.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.132 Safari/537.36'
-    $.get(url, (err, resp, data) => {
-      try {
-        $.web = JSON.parse(data)
-      } catch (e) {
-        $.token = null
-        $.logErr(e, resp)
-      } finally {
-        resove()
-      }
+    const sessions = getSessions()
+    const curSessions = getCurSessions()
+    // 会话排序: `创建时间`升序
+    sessions.sort((a, b) => a.createTime.replace(/-|:| /g, '') - b.createTime.replace(/-|:| /g, ''))
+    const apps = {}
+    sessions.forEach((session) => {
+      const appId = session.appId
+      const appName = session.appName
+      apps[appId] = apps[appId] ? apps[appId] : { id: appId, name: appName, sessions: [] }
+      const app = apps[appId]
+      app.sessions.push(session)
     })
+    Object.keys(apps).forEach((appId) => {
+      const app = apps[appId]
+      if (app.sessions.length <= 1) {
+        $.desc.push(`${app.name}: 跳过! 原因: 只有 1 个会话?`)
+        return true
+      }
+      let curSessionIdx = app.sessions.findIndex((session) => session.id === curSessions[appId])
+      if (curSessionIdx === -1) {
+        curSessionIdx = app.sessions.length - 1
+      }
+      const curSession = app.sessions[curSessionIdx]
+      const isNewRound = curSessionIdx + 1 === app.sessions.length
+      const nextSessionIdx = isNewRound ? 0 : curSessionIdx + 1
+      const nextSession = app.sessions[nextSessionIdx]
+      nextSession.datas.forEach((_data) => $.setdata([undefined, null, 'undefined', 'null', ''].includes(_data.val) ? '' : _data.val, _data.key))
+      curSessions[appId] = nextSession.id
+      $.desc.push(`${curSession.appName}: ${curSession.name} => #${nextSessionIdx + 1} ${nextSession.name} ${isNewRound ? '(新一轮)' : ''}`)
+    })
+    $.setdata(JSON.stringify(curSessions), $.KEY_curSessions)
+    resove()
   })
 }
 
-async function signapp() {
-  const accounts = getAccounts()
-  for (let accIdx = 0; accIdx < accounts.length; accIdx++) {
-    const account = accounts[accIdx]
-    await loginapp(account)
-    await $.wait(1000)
-    await signinapp(account)
-    await $.wait(1000)
-  }
-  $.accounts = accounts
+function getSessions() {
+  const sessionstr = $.getdata($.KEY_sessions)
+  const sessions = ![undefined, null, 'null', ''].includes(sessionstr) ? JSON.parse(sessionstr) : []
+  return Array.isArray(sessions) ? sessions : []
 }
 
-function loginapp(account) {
-  return new Promise((resove) => {
-    const url = { url: 'https://api.smzdm.com/v1/user/login', headers: {} }
-    url.body = `user_login=${account.acc}&user_pass=${account.pwd}&f=win`
-    $.post(url, (err, resp, data) => {
-      try {
-        account.token = $.lodash_get(JSON.parse(data), 'data.token')
-      } catch (e) {
-        $.logErr(e, resp)
-      } finally {
-        resove()
-      }
-    })
-  })
-}
-
-function signinapp(account) {
-  return new Promise((resove) => {
-    const url = { url: 'https://api.smzdm.com/v1/user/checkin', headers: {} }
-    url.body = `f=win&token=${account.token}`
-    $.post(url, (err, resp, data) => {
-      try {
-        const _data = JSON.parse(data)
-        const errCode = _data.error_code
-        if (errCode === '0' && _data.data.checkin_status === '0') account.issuc = true
-        else if (errCode === '0' && _data.data.checkin_status === '1') account.isrepeat = true
-        else account.msg = _data.error_msg
-      } catch (e) {
-        $.logErr(e, resp)
-      } finally {
-        resove()
-      }
-    })
-  })
-}
-
-function getAccounts() {
-  const accounts = []
-  $.VAl_accounts &&
-    $.VAl_accounts.split('\n').forEach((account) => {
-      let [acc, pwd] = account.split(',')
-      acc = acc ? acc.trim() : acc
-      pwd = pwd ? pwd.trim() : pwd
-      if (acc && pwd) {
-        accounts.push({ acc, pwd })
-      }
-    })
-  return accounts
+function getCurSessions() {
+  const sessionstr = $.getdata($.KEY_curSessions)
+  return ![undefined, null, 'null', ''].includes(sessionstr) ? JSON.parse(sessionstr) : {}
 }
 
 function showmsg() {
-  return new Promise((resolve) => {
-    $.subt = ''
-    $.desc = []
-    $.subt = $.web.error_code === 0 ? 'PC: 成功' : $.web.error_code === 99 ? 'PC: 未登录' : 'PC: 失败'
-    if ($.web.error_code === 0 && $.web.data) {
-      $.desc.push(`累计: ${$.web.data.checkin_num}次, 经验: ${$.web.data.exp}, 金币: ${$.web.data.gold}, 积分: ${$.web.data.point}`)
-    }
-    if (Array.isArray($.accounts) && $.accounts.length > 0) {
-      $.desc.push('点击查看详情', '')
-      let signedCnt = 0
-      for (let accIdx = 0; accIdx < $.accounts.length; accIdx++) {
-        const account = $.accounts[accIdx]
-        signedCnt += account.issuc || account.isrepeat ? 1 : 0
-        $.desc.push(`${account.acc}: ${account.issuc ? '成功' : account.isrepeat ? '重复' : `失败. ${account.msg}`}`)
-      }
-      $.subt += `, APP: ${signedCnt}/${$.accounts.length}`
+  return new Promise((resove) => {
+    if (!$.CFG_isSilent || $.CFG_isSilent === 'false') {
+      $.msg($.name, $.subt, $.desc.join('\n'))
     } else {
-      $.subt += ', APP: 在BoxJs设置签到账号'
+      $.log('', ...$.desc)
     }
-    $.msg($.name, $.subt, $.desc.join('\n'))
-    resolve()
+    resove()
   })
 }
 
